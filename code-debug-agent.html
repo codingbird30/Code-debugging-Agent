@@ -1,0 +1,601 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Code Debugging Pair Agent</title>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg: #0e0e10;
+      --surface: #18181b;
+      --surface2: #1f1f23;
+      --border: rgba(255,255,255,0.08);
+      --border-hover: rgba(255,255,255,0.16);
+      --text: #f0f0f0;
+      --muted: #888;
+      --subtle: #555;
+      --accent: #7c6af7;
+      --accent-dim: rgba(124,106,247,0.15);
+      --accent-border: rgba(124,106,247,0.4);
+      --green: #34d399;
+      --green-bg: rgba(52,211,153,0.1);
+      --amber: #fbbf24;
+      --amber-bg: rgba(251,191,36,0.1);
+      --red: #f87171;
+      --red-bg: rgba(248,113,113,0.1);
+      --radius: 10px;
+      --radius-lg: 14px;
+      --font-mono: 'Fira Code', 'Cascadia Code', 'JetBrains Mono', monospace;
+    }
+
+    body {
+      background: var(--bg);
+      color: var(--text);
+      font-family: 'DM Sans', 'Segoe UI', sans-serif;
+      min-height: 100vh;
+      line-height: 1.6;
+    }
+
+    /* ── Layout ── */
+    .app {
+      max-width: 900px;
+      margin: 0 auto;
+      padding: 2.5rem 1.5rem 4rem;
+    }
+
+    /* ── Header ── */
+    .header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 2.5rem;
+    }
+    .logo {
+      width: 42px; height: 42px;
+      background: var(--accent);
+      border-radius: 10px;
+      display: flex; align-items: center; justify-content: center;
+      flex-shrink: 0;
+    }
+    .logo svg { width: 20px; height: 20px; stroke: #fff; fill: none; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+    .header-text h1 { font-size: 18px; font-weight: 600; color: var(--text); }
+    .header-text p  { font-size: 13px; color: var(--muted); margin-top: 2px; }
+    .badge {
+      margin-left: auto;
+      font-size: 11px; font-weight: 500;
+      padding: 3px 10px;
+      border-radius: 20px;
+      background: var(--green-bg);
+      color: var(--green);
+      border: 1px solid rgba(52,211,153,0.25);
+    }
+
+    /* ── Form ── */
+    .form-group { margin-bottom: 14px; }
+    label {
+      display: block;
+      font-size: 11px;
+      font-weight: 500;
+      color: var(--muted);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin-bottom: 6px;
+    }
+    textarea, select, input {
+      width: 100%;
+      background: var(--surface);
+      color: var(--text);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 12px;
+      font-size: 13px;
+      font-family: inherit;
+      transition: border-color 0.2s;
+      outline: none;
+      resize: vertical;
+    }
+    textarea:focus, select:focus, input:focus { border-color: var(--accent-border); }
+    #code {
+      font-family: var(--font-mono);
+      min-height: 200px;
+      font-size: 12.5px;
+      tab-size: 2;
+      line-height: 1.7;
+    }
+    #errmsg, #expected { min-height: 64px; font-family: var(--font-mono); font-size: 12px; }
+    select { cursor: pointer; }
+    option { background: var(--surface2); }
+
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+    @media(max-width: 600px) { .row2 { grid-template-columns: 1fr; } }
+
+    /* ── Buttons ── */
+    .actions { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 6px; }
+    .btn-primary {
+      background: var(--accent);
+      color: #fff;
+      border: none;
+      border-radius: var(--radius);
+      padding: 10px 20px;
+      font-size: 13px; font-weight: 500;
+      cursor: pointer;
+      display: flex; align-items: center; gap: 8px;
+      transition: opacity 0.15s, transform 0.1s;
+    }
+    .btn-primary:hover { opacity: 0.88; }
+    .btn-primary:active { transform: scale(0.97); }
+    .btn-primary:disabled { opacity: 0.4; cursor: not-allowed; }
+    .btn-sec {
+      background: transparent;
+      color: var(--muted);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 10px 16px;
+      font-size: 13px;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s;
+    }
+    .btn-sec:hover { background: var(--surface); border-color: var(--border-hover); }
+
+    .spinner {
+      width: 14px; height: 14px;
+      border: 2px solid rgba(255,255,255,0.25);
+      border-top-color: #fff;
+      border-radius: 50%;
+      animation: spin 0.6s linear infinite;
+      display: none;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Key tip ── */
+    .tip {
+      font-size: 12px; color: var(--subtle);
+      margin-top: 8px;
+    }
+    .tip a { color: var(--accent); text-decoration: none; }
+    .tip a:hover { text-decoration: underline; }
+
+    /* ── Results ── */
+    .result-panel {
+      margin-top: 28px;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-lg);
+      overflow: hidden;
+      display: none;
+      animation: fadeUp 0.25s ease;
+    }
+    @keyframes fadeUp { from { opacity:0; transform: translateY(8px); } to { opacity:1; transform: none; } }
+
+    .result-tabs {
+      display: flex;
+      overflow-x: auto;
+      background: var(--surface2);
+      border-bottom: 1px solid var(--border);
+      scrollbar-width: none;
+    }
+    .result-tabs::-webkit-scrollbar { display: none; }
+    .tab {
+      padding: 10px 18px;
+      font-size: 12px; font-weight: 500;
+      color: var(--muted);
+      cursor: pointer;
+      border-bottom: 2px solid transparent;
+      white-space: nowrap;
+      transition: color 0.15s;
+      user-select: none;
+    }
+    .tab:hover { color: var(--text); }
+    .tab.active { color: var(--accent); border-bottom-color: var(--accent); }
+
+    .tab-body {
+      padding: 20px;
+      font-size: 13px;
+      line-height: 1.75;
+      display: none;
+      max-height: 500px;
+      overflow-y: auto;
+    }
+    .tab-body.active { display: block; }
+
+    /* Scrollbar for tab-body */
+    .tab-body::-webkit-scrollbar { width: 4px; }
+    .tab-body::-webkit-scrollbar-track { background: transparent; }
+    .tab-body::-webkit-scrollbar-thumb { background: var(--border-hover); border-radius: 4px; }
+
+    /* ── Issue cards ── */
+    .issue-card {
+      background: var(--surface2);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      margin-bottom: 10px;
+    }
+    .issue-title { font-weight: 600; font-size: 13px; display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .issue-body { font-size: 12px; color: var(--muted); margin-top: 5px; line-height: 1.7; }
+    .severity {
+      font-size: 10px; font-weight: 600;
+      padding: 2px 8px; border-radius: 20px;
+    }
+    .sev-high   { background: var(--red-bg);   color: var(--red);   border: 1px solid rgba(248,113,113,0.25); }
+    .sev-medium { background: var(--amber-bg);  color: var(--amber); border: 1px solid rgba(251,191,36,0.25); }
+    .sev-low    { background: var(--green-bg);  color: var(--green); border: 1px solid rgba(52,211,153,0.25); }
+
+    /* ── Code blocks ── */
+    pre {
+      background: #111113;
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 12px 14px;
+      font-family: var(--font-mono);
+      font-size: 12px;
+      line-height: 1.7;
+      overflow-x: auto;
+      white-space: pre-wrap;
+      word-break: break-all;
+      margin: 8px 0 14px;
+      color: #d4d4d4;
+    }
+
+    .section-label {
+      font-size: 11px; font-weight: 600;
+      color: var(--accent);
+      text-transform: uppercase;
+      letter-spacing: 0.07em;
+      margin: 16px 0 6px;
+    }
+    .section-label:first-child { margin-top: 0; }
+
+    .fix-explain {
+      font-size: 12px; color: var(--muted);
+      margin-bottom: 6px;
+    }
+
+    .note-item {
+      border-left: 2px solid var(--accent);
+      padding: 6px 12px;
+      margin-bottom: 10px;
+      font-size: 12px;
+      color: var(--muted);
+      line-height: 1.7;
+    }
+
+    .empty-state {
+      text-align: center;
+      padding: 40px 20px;
+      color: var(--subtle);
+      font-size: 13px;
+    }
+
+    /* ── Divider between sections ── */
+    .section-sep {
+      border: none;
+      border-top: 1px solid var(--border);
+      margin: 16px 0;
+    }
+
+    /* ── Footer ── */
+    .footer {
+      margin-top: 40px;
+      text-align: center;
+      font-size: 12px;
+      color: var(--subtle);
+    }
+    .footer a { color: var(--accent); text-decoration: none; }
+    .footer a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="app">
+
+    <!-- Header -->
+    <div class="header">
+      <div class="logo">
+        <svg viewBox="0 0 24 24">
+          <polyline points="16 18 22 12 16 6"/>
+          <polyline points="8 6 2 12 8 18"/>
+        </svg>
+      </div>
+      <div class="header-text">
+        <h1>Code Debugging Pair Agent</h1>
+        <p>Senior engineer-level analysis · bugs · edge cases · fixes · refactors</p>
+      </div>
+      <span class="badge">● AI Powered</span>
+    </div>
+
+    <!-- Code Input -->
+    <div class="form-group">
+      <label>Code snippet or full file</label>
+      <textarea id="code" placeholder="// Paste your code here...
+function getUserById(id) {
+  return db.query('SELECT * FROM users WHERE id = ' + id);
+}"></textarea>
+    </div>
+
+    <div class="row2">
+      <div class="form-group">
+        <label>Language</label>
+        <select id="lang">
+          <option value="auto">Auto-detect</option>
+          <option value="JavaScript">JavaScript</option>
+          <option value="TypeScript">TypeScript</option>
+          <option value="Python">Python</option>
+          <option value="Java">Java</option>
+          <option value="C++">C++</option>
+          <option value="Go">Go</option>
+          <option value="Rust">Rust</option>
+          <option value="Ruby">Ruby</option>
+          <option value="PHP">PHP</option>
+          <option value="C#">C#</option>
+          <option value="SQL">SQL</option>
+          <option value="Bash">Bash / Shell</option>
+          <option value="Other">Other</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Context / usage</label>
+        <select id="ctx">
+          <option value="">None specified</option>
+          <option value="production API">Production API</option>
+          <option value="high-concurrency server">High-concurrency server</option>
+          <option value="CLI tool">CLI tool</option>
+          <option value="data pipeline">Data pipeline</option>
+          <option value="frontend/browser">Frontend / browser</option>
+          <option value="embedded/IoT">Embedded / IoT</option>
+          <option value="machine learning">ML / data science</option>
+          <option value="unit test suite">Unit test suite</option>
+        </select>
+      </div>
+    </div>
+
+    <div class="row2">
+      <div class="form-group">
+        <label>Error message / stack trace (optional)</label>
+        <textarea id="errmsg" placeholder="TypeError: Cannot read property 'id' of undefined&#10;  at getUserById (app.js:12)..."></textarea>
+      </div>
+      <div class="form-group">
+        <label>Expected behavior (optional)</label>
+        <textarea id="expected" placeholder="Should return the user object or null if not found..."></textarea>
+      </div>
+    </div>
+
+    <!-- API Key -->
+    <div class="form-group">
+      <label>Anthropic API key</label>
+      <input type="password" id="apikey" placeholder="sk-ant-..." autocomplete="off" />
+      <p class="tip">Your key is never stored or sent anywhere except directly to Anthropic's API. Get one at <a href="https://console.anthropic.com" target="_blank">console.anthropic.com</a>.</p>
+    </div>
+
+    <div class="actions">
+      <button class="btn-primary" id="analyzeBtn" onclick="runAnalysis()">
+        <div class="spinner" id="spinner"></div>
+        <span id="btnText">Analyze code</span>
+      </button>
+      <button class="btn-sec" onclick="clearAll()">Clear</button>
+    </div>
+
+    <!-- Results -->
+    <div class="result-panel" id="resultPanel">
+      <div class="result-tabs" id="tabBar"></div>
+      <div id="tabBodies"></div>
+    </div>
+
+    <div class="footer">
+      Built with <a href="https://docs.anthropic.com/en/api" target="_blank">Anthropic Claude API</a> &middot;
+      Model: claude-sonnet-4-20250514
+    </div>
+  </div>
+
+  <script>
+    const TABS = ['Summary', 'Issues', 'Edge Cases', 'Fixes', 'Improved', 'Notes'];
+
+    function setLoading(on) {
+      document.getElementById('spinner').style.display = on ? 'block' : 'none';
+      document.getElementById('btnText').textContent = on ? 'Analyzing...' : 'Analyze code';
+      document.getElementById('analyzeBtn').disabled = on;
+    }
+
+    function clearAll() {
+      ['code', 'errmsg', 'expected'].forEach(id => document.getElementById(id).value = '');
+      document.getElementById('lang').value = 'auto';
+      document.getElementById('ctx').value = '';
+      document.getElementById('resultPanel').style.display = 'none';
+    }
+
+    function switchTab(idx) {
+      document.querySelectorAll('.tab').forEach((t, i) => t.classList.toggle('active', i === idx));
+      document.querySelectorAll('.tab-body').forEach((b, i) => b.classList.toggle('active', i === idx));
+    }
+
+    function esc(t) {
+      return (t || '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    }
+
+    function sev(s) {
+      const map = { high: 'sev-high', medium: 'sev-medium', low: 'sev-low' };
+      const k = (s || 'low').toLowerCase();
+      return `<span class="severity ${map[k] || 'sev-low'}">${esc(s || 'low')}</span>`;
+    }
+
+    function renderSummary(s) {
+      if (!s) return '<div class="empty-state">No summary available.</div>';
+      return `<p>${esc(s)}</p>`;
+    }
+
+    function renderIssues(issues) {
+      if (!issues || !issues.length) {
+        return '<div class="empty-state">No issues detected — looks clean!</div>';
+      }
+      return issues.map(iss => `
+        <div class="issue-card">
+          <div class="issue-title">${esc(iss.title || 'Issue')}${sev(iss.severity)}</div>
+          <div class="issue-body">${esc(iss.reason || '')}</div>
+        </div>`).join('');
+    }
+
+    function renderEdge(cases) {
+      if (!cases || !cases.length) return '<div class="empty-state">No edge case analysis provided.</div>';
+      return cases.map(ec => `
+        <div class="issue-card">
+          <div class="issue-title">${esc(ec.case || ec.title || 'Case')}</div>
+          <div class="issue-body">${esc(ec.behavior || ec.description || '')}</div>
+        </div>`).join('');
+    }
+
+    function renderFixes(fixes) {
+      if (!fixes || !fixes.length) return '<div class="empty-state">No fixes provided.</div>';
+      return fixes.map(f => `
+        <div class="section-label">${esc(f.title || 'Fix')}</div>
+        <p class="fix-explain">${esc(f.explanation || '')}</p>
+        <pre>${esc(f.code || '')}</pre>`).join('<hr class="section-sep">');
+    }
+
+    function renderImproved(imp) {
+      if (!imp) return '<div class="empty-state">No refactored version provided.</div>';
+      const notes = imp.notes || '';
+      const code  = imp.code  || (typeof imp === 'string' ? imp : '');
+      return `${notes ? `<p class="fix-explain" style="margin-bottom:10px">${esc(notes)}</p>` : ''}
+              <pre>${esc(code)}</pre>`;
+    }
+
+    function renderNotes(notes) {
+      if (!notes || !notes.length) return '<div class="empty-state">No engineering notes.</div>';
+      return notes.map(n => `<div class="note-item">${esc(n)}</div>`).join('');
+    }
+
+    function renderResults(parsed) {
+      const panel    = document.getElementById('resultPanel');
+      const tabBar   = document.getElementById('tabBar');
+      const tabBodies = document.getElementById('tabBodies');
+      tabBar.innerHTML = '';
+      tabBodies.innerHTML = '';
+
+      TABS.forEach((name, i) => {
+        const t = document.createElement('div');
+        t.className = 'tab' + (i === 0 ? ' active' : '');
+        t.textContent = name;
+        t.onclick = () => switchTab(i);
+        tabBar.appendChild(t);
+
+        const b = document.createElement('div');
+        b.className = 'tab-body' + (i === 0 ? ' active' : '');
+        tabBodies.appendChild(b);
+      });
+
+      const bodies = tabBodies.querySelectorAll('.tab-body');
+      bodies[0].innerHTML = renderSummary(parsed.summary);
+      bodies[1].innerHTML = renderIssues(parsed.issues);
+      bodies[2].innerHTML = renderEdge(parsed.edge_cases);
+      bodies[3].innerHTML = renderFixes(parsed.fixes);
+      bodies[4].innerHTML = renderImproved(parsed.improved);
+      bodies[5].innerHTML = renderNotes(parsed.notes);
+
+      panel.style.display = 'block';
+      panel.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    async function runAnalysis() {
+      const code    = document.getElementById('code').value.trim();
+      const apiKey  = document.getElementById('apikey').value.trim();
+      const lang    = document.getElementById('lang').value;
+      const ctx     = document.getElementById('ctx').value;
+      const err     = document.getElementById('errmsg').value.trim();
+      const exp     = document.getElementById('expected').value.trim();
+
+      if (!code)   { alert('Please paste some code to analyze.'); return; }
+      if (!apiKey) { alert('Please enter your Anthropic API key.'); return; }
+
+      setLoading(true);
+      document.getElementById('resultPanel').style.display = 'none';
+
+      const langStr = lang === 'auto' ? '(auto-detect language)' : lang;
+      const ctxStr  = ctx  ? `Usage context: ${ctx}.` : '';
+      const errStr  = err  ? `Error / stack trace:\n${err}` : '';
+      const expStr  = exp  ? `Expected behavior: ${exp}` : '';
+
+      const systemPrompt = `You are a Senior Software Engineer acting as a code debugging and review partner.
+Analyze the given code deeply. Return ONLY a valid JSON object — no markdown, no backticks, no explanation outside the JSON.
+
+JSON schema:
+{
+  "summary": "string — what this code does",
+  "issues": [
+    { "title": "short name", "severity": "high|medium|low", "reason": "why it is a problem" }
+  ],
+  "edge_cases": [
+    { "case": "scenario name", "behavior": "what happens" }
+  ],
+  "fixes": [
+    { "title": "fix name", "explanation": "brief reason", "code": "corrected snippet" }
+  ],
+  "improved": {
+    "notes": "what changed and why",
+    "code": "full refactored version"
+  },
+  "notes": ["engineering note 1", "engineering note 2"]
+}
+
+Be precise, practical, and production-focused. Never include markdown fences in the JSON values.`;
+
+      const userMsg = `Language: ${langStr}
+${ctxStr}
+${errStr}
+${expStr}
+
+Code:
+\`\`\`
+${code}
+\`\`\``;
+
+      try {
+        const res = await fetch('https://api.anthropic.com/v1/messages', {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-api-key': apiKey,
+            'anthropic-version': '2023-06-01',
+            'anthropic-dangerous-direct-browser-access': 'true'
+          },
+          body: JSON.stringify({
+            model: 'claude-sonnet-4-20250514',
+            max_tokens: 3000,
+            system: systemPrompt,
+            messages: [{ role: 'user', content: userMsg }]
+          })
+        });
+
+        if (!res.ok) {
+          const errData = await res.json().catch(() => ({}));
+          throw new Error(errData.error?.message || `HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+        const raw  = (data.content || []).map(b => b.text || '').join('');
+        const clean = raw.replace(/```json|```/g, '').trim();
+        const parsed = JSON.parse(clean);
+        renderResults(parsed);
+      } catch (e) {
+        const panel = document.getElementById('resultPanel');
+        document.getElementById('tabBar').innerHTML = '<div class="tab active">Error</div>';
+        document.getElementById('tabBodies').innerHTML = `
+          <div class="tab-body active">
+            <div class="issue-card">
+              <div class="issue-title">Analysis failed <span class="severity sev-high">error</span></div>
+              <div class="issue-body">${esc(e.message)}</div>
+            </div>
+          </div>`;
+        panel.style.display = 'block';
+      } finally {
+        setLoading(false);
+      }
+    }
+
+    // Allow Ctrl+Enter / Cmd+Enter to trigger analysis
+    document.getElementById('code').addEventListener('keydown', e => {
+      if ((e.ctrlKey || e.metaKey) && e.key === 'Enter') runAnalysis();
+    });
+  </script>
+</body>
+</html>
