@@ -14,7 +14,7 @@ An AI-powered code debugger and reviewer built with the Anthropic Claude API. Ac
 
 ## Demo
 
-> Paste code → select language → hit **Analyze** → get structured results across 6 tabs.
+>[ Paste code → select language → hit **Analyze** → get structured results across 6 tabs.](https://code-debug-agent-agent.onrender.com/)
 
 ## Getting Started
 
